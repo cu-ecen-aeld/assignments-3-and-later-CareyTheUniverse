@@ -11,18 +11,24 @@
 #include <syslog.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 
-
 #define BUFFER_SIZE 1024
-#define PORT 9000
-#define DATA_FILE "/var/tmp/aesdsocketdata"
+#define PORT "9000"
 
+const char *DATA_FILE = "/var/tmp/aesdsocketdata";
+
+int sock_fd= 0;
+int server_fd = 0;
+ssize_t count = 0;
+struct addrinfo *servinfo = NULL;
+FILE *out_file = NULL;
+FILE *client_data = NULL;
 
 volatile sig_atomic_t stop_server = 0;
-
 
 // Signal handler for SIGINT and SIGTERM
 void signal_handler(int signal)
@@ -32,158 +38,134 @@ void signal_handler(int signal)
 		syslog(LOG_INFO, "Caught signal, exiting");
 		stop_server = 1;
 	}
-}
-
-
-// Append data to the file
-int append_to_file(const char* data) 
-{
-	int fd = open(DATA_FILE, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP);
-	
-	if (fd == -1) 
+	if (client_data)
 	{
-		syslog(LOG_ERR, "Failed to open file %s, error: %s", DATA_FILE, strerror(errno));
-		return -1;
+		fclose(client_data);
 	}
-	
-	size_t data_len = strlen(data);
-	char data_new[data_len];
-	memcpy(data_new, data, data_len);
-	data_new[data_len] = '\n';
-	data_new[data_len] = '\0';
-	
-	if (write(fd, data_new, strlen(data_new)) == -1) 
+	if (server_fd)
 	{
-		syslog(LOG_ERR, "Failed to write to file %s, error: %s", DATA_FILE, strerror(errno));
-		close(fd);
-		return -1;
+		close(server_fd);
 	}
-	
-	close(fd);
-	return 0;
+	if (out_file)
+	{
+		fclose(out_file);
+	}
+	if (sock_fd)
+	{
+		close(sock_fd);
+	}
+	if (servinfo)
+	{
+		freeaddrinfo(servinfo);
+	}
+	remove(DATA_FILE);
+	exit(0);
 }
 
 
 int main(int argc, char *argv[])
 {
-	bool daemon_mode = false;
-
-	// Check if -d argument is present
-	if (argc > 1 && strcmp(argv[1], "-d") == 0) 
-	{
-		daemon_mode = true;
-	}
-
-	// Daemonize the program if -d argument is present
-	if (daemon_mode) 
-	{
-		pid_t pid = fork();
-		if (pid == -1) 
-		{
-			syslog(LOG_ERR, "Failed to fork into daemon process, error: %s", strerror(errno));
-			return -1;
-		} 
-    		else if (pid != 0) 
-    		{
-			return 0;
-		}
-	}
+	int status;
+	char buffer[BUFFER_SIZE];
+	
+	struct addrinfo hints;
+	struct sockaddr their_addr;
+	socklen_t sin_size;
+	struct sigaction sa = {0};
+	const int option=1;
+	
+	char *input = NULL;
+	size_t len = 0;
+	size_t size;
 
 	// Register signal handler for SIGINT and SIGTERM
-	signal(SIGINT, signal_handler);
-	signal(SIGTERM, signal_handler);
-
-	// Create a socket
-	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	sa.sa_handler = signal_handler; 
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
 	
-	if (server_fd == -1) 
+	// Create a socket
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+
+	getaddrinfo("localhost", PORT, &hints, &servinfo);
+
+	if ((sock_fd = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
-		syslog(LOG_ERR, "Failed to create socket, error: %s", strerror(errno));
-		return -1;
-	    }
+		return (-1);
+	}
+
+	setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
 
 	// Bind socket to port
-	struct sockaddr_in server_addr;
-	memset(&server_addr, 0, sizeof(server_addr));
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_addr.s_addr = INADDR_ANY;
-	server_addr.sin_port = htons(PORT);
-	
-	if (bind(server_fd, (struct sockaddr*) &server_addr, sizeof(server_addr)) == -1) 
+	if ((status = bind(sock_fd, servinfo->ai_addr, servinfo->ai_addrlen)) != 0)
 	{
-		syslog(LOG_ERR, "Failed to bind socket, error: %s", strerror(errno));
-		close(server_fd);
-		return -1;
+		return (-1);
+	}
+
+	// Check if -d argument is present and fork daemon
+	if (argc == 2 && strcmp(argv[1], "-d") == 0 && fork()) 
+	{
+		exit(0);
 	}
 	
 	// Listen for incoming connections
-	if (listen(server_fd, 1) == -1) 
+	if (listen(sock_fd, 10) == -1) 
 	{
-		syslog(LOG_ERR, "Failed to listen for connections, error: %s", strerror(errno));
-		close(server_fd);
-		return -1;
+		perror("Listen for connection");
+		exit(1);
 	}
 
-	while (!stop_server) 
+	while(1) 
 	{
 		// Accept incoming connection
-		struct sockaddr_in client_addr;
-		socklen_t client_addr_len = sizeof(client_addr);
-		int client_fd = accept(server_fd, (struct sockaddr*) &client_addr, &client_addr_len);
-		
-		if (client_fd == -1) 
+		sin_size = sizeof their_addr;
+		server_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &sin_size);
+		if (server_fd == -1) 
 		{
-			syslog(LOG_ERR, "Failed to accept incoming connection, error: %s", strerror(errno));
-			continue;
+			perror("Accept connection");
+ 			continue;
 		}
-		
-		// Log message for accepted connection
-		char client_ip[INET_ADDRSTRLEN];
-		inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
-		syslog(LOG_INFO, "Accepted connection from %s", client_ip);
+
+		struct sockaddr_in *client_addr = (struct sockaddr_in *)&their_addr;
+ 		syslog(LOG_INFO, "Accepted connection from %s\n", inet_ntoa(client_addr->sin_addr));
+
+		client_data = fdopen(server_fd, "rb");
 
 		// Receive data and append to file
-		char buffer[BUFFER_SIZE];
-		memset(buffer, 0, BUFFER_SIZE);
-		int bytes_received = recv(client_fd, buffer, BUFFER_SIZE, 0);
-		
-		if (bytes_received == -1) 
+		if(client_data)
 		{
-			syslog(LOG_ERR, "Failed to receive data, error: %s", strerror(errno));
-			close(client_fd);
-			continue;
-		}
-		
-		if (bytes_received == 0) 
-		{
-			syslog(LOG_INFO, "Connection closed by client");
-			close(client_fd);
-			continue;
-		}
-		
-		// Append received data to file
-		if (append_to_file(buffer) == -1) 
-		{
-			syslog(LOG_ERR, "Failed to append data to file");
-		}
-		
-		// Send response
-		char response[BUFFER_SIZE];
-		strcpy(response, buffer);
-		int bytes_sent = send(client_fd, response, strlen(response), 0);
-		
-		if (bytes_sent == -1) 
-		{
-			syslog(LOG_ERR, "Failed to send response, error: %s", strerror(errno));
-			close(client_fd);
-			continue;
-		}
-		
-		close(client_fd);
-	}
+			input = NULL;
+			len = 0;
+			if ((count = getline(&input, &len, client_data)) != -1)
+			{
+				out_file = fopen(DATA_FILE, "a+");
 
-	close(server_fd);
+				fputs(input, out_file);
+				fflush(out_file);
+				free(input);	
+                   
+				size = 0;
+
+				// Send response
+				fseek(out_file, 0, SEEK_SET);
+				while ((size = fread(buffer, sizeof(char), BUFFER_SIZE, out_file)) > 0)
+				send(server_fd, buffer, size, 0);
+				fclose(out_file);
+				out_file = NULL;
+					
+				fclose(client_data);
+				client_data = NULL;
+				close(server_fd);
+				server_fd = 0;
+				syslog(LOG_INFO, "Closed connection from %s\n", inet_ntoa(client_addr->sin_addr));	
+			}
+		}
+	}
+	
 	syslog(LOG_INFO, "Exiting");
 	return 0;
 }
-
