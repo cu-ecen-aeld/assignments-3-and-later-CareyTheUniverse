@@ -1,4 +1,4 @@
-CC = gcc
+CC = $(CROSS_COMPILE)gcc
 
 HFILES = 
 CFILES = aesdsocket.c
