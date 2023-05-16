@@ -15,6 +15,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <pthread.h>
+#include <sys/queue.h>
 
 #define BUFFER_SIZE 1024
 #define PORT "9000"
@@ -62,6 +64,30 @@ void signal_handler(int signal)
 	exit(0);
 }
 
+void *timestamp(void *mutex)
+{
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+		
+	while (1)
+	{
+		sleep(10);
+		time_t t = time(NULL);
+		struct tm *tm = localtime(&t);
+		char buf[94];
+		
+		strftime(buf, sizeof(buf), "timestamp:%a, %d %b %y %T %z\n", tm);
+		
+		pthread_mutex_lock(mutex);
+		
+		out_file = fopen(DATA_FILE, "a+");
+		fputs(buf, out_file);
+		fclose(out_file);
+		
+		pthread_mutex_unlock(mutex);
+	}
+	return mutex;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -77,6 +103,8 @@ int main(int argc, char *argv[])
 	char *input = NULL;
 	size_t len = 0;
 	size_t size;
+	
+	//pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 	// Register signal handler for SIGINT and SIGTERM
 	sa.sa_handler = signal_handler; 
@@ -104,7 +132,7 @@ int main(int argc, char *argv[])
 	if ((status = bind(sock_fd, servinfo->ai_addr, servinfo->ai_addrlen)) != 0)
 	{
 		return (-1);
-	}
+	}	
 
 	// Check if -d argument is present and fork daemon
 	if (argc == 2 && strcmp(argv[1], "-d") == 0 && fork()) 
@@ -134,6 +162,9 @@ int main(int argc, char *argv[])
  		syslog(LOG_INFO, "Accepted connection from %s\n", inet_ntoa(client_addr->sin_addr));
 
 		client_data = fdopen(server_fd, "rb");
+		
+		// Mutex lock
+		
 
 		// Receive data and append to file
 		if(client_data)
@@ -164,6 +195,9 @@ int main(int argc, char *argv[])
 				syslog(LOG_INFO, "Closed connection from %s\n", inet_ntoa(client_addr->sin_addr));	
 			}
 		}
+		
+		// Mutex unlock
+		
 	}
 	
 	syslog(LOG_INFO, "Exiting");
