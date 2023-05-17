@@ -16,5 +16,4 @@ clean:
 	-rm -f aesdsocket
 
 aesdsocket: $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -o aesdsocket
-
+	$(CC) $(CFLAGS) $(OBJS) -o aesdsocket  -lpthread
