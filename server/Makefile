@@ -7,7 +7,7 @@ SRCS = ${HFILES} ${CFILES}
 OBJS = ${CFILES:.c=.o}
 
 CFLAGS ?= -Wall -Werror
-LDFLAGS ?= 
+LDFLAGS ?= -pthread -lrt
 
 all: aesdsocket
 
