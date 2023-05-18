@@ -6,7 +6,7 @@ CFILES = aesdsocket.c
 SRCS = ${HFILES} ${CFILES}
 OBJS = ${CFILES:.c=.o}
 
-CFLAGS ?= -Wall -Werror
+CFLAGS ?= -g -Wall -Werror
 LDFLAGS ?= -pthread -lrt
 
 all: aesdsocket
@@ -16,4 +16,4 @@ clean:
 	-rm -f aesdsocket
 
 aesdsocket: $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o aesdsocket  -lpthread
+	$(CC) $(CFLAGS) $^ -o $@ $(INCLUDES) $(LDFLAGS)
