@@ -147,7 +147,11 @@ int main(int argc, char *argv[])
         
         if(argc ==2 && (!strcmp(argv[1],"-d")))
         {
-            daemon(0,0);
+            if (daemon(0,0) == -1)
+		{
+			syslog(LOG_ERR, "Error: daemon mode");
+			return -1;
+		}
  
         }
     }
