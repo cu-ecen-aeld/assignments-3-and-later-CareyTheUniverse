@@ -63,7 +63,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      */
      
      struct aesd_dev *dev;
-     dev = flip->private_data;
+     dev = filp->private_data;
      struct aesd_buffer_entry *element = NULL;
      size_t bytesread = 0;
      size_t read_offset = 0;
@@ -82,7 +82,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      	goto out;
      }
      
-     bytesread = element->size - read_offset:
+     bytesread = element->size - read_offset;
      
      if(bytesread > count)
      {
@@ -116,7 +116,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      */
      
      struct aesd_dev *dev;
-     dev = flip->private_data;
+     dev = filp->private_data;
      int i;
      
      if (mutex_lock_interruptible(&dev->aesd_dev_lock))
@@ -135,11 +135,11 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      }
      else
      {
-     dev->elements.buffptr = krealloc(dev->elements.buffptr, dev->elements.size + count, GFP_KERNEL);
-     if(!dev->elements.buffptr)
-     {
-     	goto out;
-     }
+     	dev->elements.buffptr = krealloc(dev->elements.buffptr, dev->elements.size + count, GFP_KERNEL);
+     	if(!dev->elements.buffptr)
+     	{
+     		goto out;
+     	}
      
      dev->elements.size += count;
      
@@ -162,7 +162,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      retval = count;
      
 out:
-	*f_pos = 0
+	*f_pos = 0;
 	mutex_unlock(&dev->aesd_dev_lock);
 	return retval;
 }
@@ -207,7 +207,7 @@ int aesd_init_module(void)
      * TODO: initialize the AESD specific portion of the device
      */
      
-     mutex_init(&aesd_device.easd_dev_lock);
+     mutex_init(&aesd_device.aesd_dev_lock);
 
     result = aesd_setup_cdev(&aesd_device);
 
@@ -241,6 +241,7 @@ void aesd_cleanup_module(void)
     mutex_destroy(&aesd_device.aesd_dev_lock);
 
     unregister_chrdev_region(devno, 1);
+    }
 }
 
 

@@ -28,12 +28,10 @@
 #define PORT "9000"  
 #define USE_AESD_CHAR_DEVICE 1
 
-const char *DATA_FILE = "/var/tmp/aesdsocketdata";
-
 #if(USE_AESD_CHAR_DEVICE ==1)
-const char *path = "/dev/aesdchar";
+const char *DATA_FILE = "/dev/aesdchar";
 #else
-const char *path = "/var/tmp/aesdsocketdata";
+const char *DATA_FILE = "/var/tmp/aesdsocketdata";
 #endif
 
 typedef struct threads{
