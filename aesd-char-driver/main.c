@@ -11,6 +11,9 @@
  *
  */
 
+#include <linux/mutex.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/printk.h>
@@ -21,7 +24,7 @@
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Kyle Carey"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
@@ -32,6 +35,11 @@ int aesd_open(struct inode *inode, struct file *filp)
     /**
      * TODO: handle open
      */
+     
+     struct aesd_dev *dev = NULL;
+     dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+     filp->private_data = dev;
+     
     return 0;
 }
 
@@ -41,6 +49,7 @@ int aesd_release(struct inode *inode, struct file *filp)
     /**
      * TODO: handle release
      */
+     
     return 0;
 }
 
@@ -52,7 +61,49 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     /**
      * TODO: handle read
      */
-    return retval;
+     
+     struct aesd_dev *dev;
+     dev = flip->private_data;
+     struct aesd_buffer_entry *element = NULL;
+     size_t bytesread = 0;
+     size_t read_offset = 0;
+     
+     if (mutex_lock_interruptible(&dev->aesd_dev_lock))
+     {
+     	PDEBUG("No lock");
+     	return -ERESTARTSYS;
+     }
+     
+     element = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->cbuf, *f_pos, &read_offset);
+     
+     if(element == NULL)
+     {
+     	retval = 0;
+     	goto out;
+     }
+     
+     bytesread = element->size - read_offset:
+     
+     if(bytesread > count)
+     {
+     	bytesread = count;
+     }
+     
+     if(copy_to_user(buf, element->buffptr + read_offset, bytesread))
+     {
+     	retval = -EFAULT;
+     	goto out;
+     }
+     else
+     {
+     	retval = bytesread;
+     }
+     
+     *f_pos += bytesread;
+     
+out:
+	mutex_unlock(&dev->aesd_dev_lock);
+	return retval;
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -63,7 +114,57 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     /**
      * TODO: handle write
      */
-    return retval;
+     
+     struct aesd_dev *dev;
+     dev = flip->private_data;
+     int i;
+     
+     if (mutex_lock_interruptible(&dev->aesd_dev_lock))
+     {
+     	PDEBUG("No lock");
+     	return -ERESTARTSYS;
+     }
+     
+     if(!dev->elements.size)
+     {
+     	dev->elements.buffptr = kmalloc(count, GFP_KERNEL);
+     	if(!dev->elements.buffptr)
+     	{
+     		goto out;
+     	}
+     }
+     else
+     {
+     dev->elements.buffptr = krealloc(dev->elements.buffptr, dev->elements.size + count, GFP_KERNEL);
+     if(!dev->elements.buffptr)
+     {
+     	goto out;
+     }
+     
+     dev->elements.size += count;
+     
+     for(i = 0; i<dev->elements.size; i++)
+     {
+     	if(dev->elements.buffptr[i] == '\n')
+     	{
+     		const char* buffer_created = NULL;
+     		buffer_created = aesd_circular_buffer_add_entry(&dev->cbuf, &dev->elements);
+     		if(buffer_created!=NULL)
+     		{
+     			kfree(buffer_created);
+     		}
+     		
+     		dev->elements.buffptr = 0;
+     		dev->elements.size = 0;
+     	}
+     }
+     
+     retval = count;
+     
+out:
+	*f_pos = 0
+	mutex_unlock(&dev->aesd_dev_lock);
+	return retval;
 }
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
@@ -105,6 +206,8 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
+     
+     mutex_init(&aesd_device.easd_dev_lock);
 
     result = aesd_setup_cdev(&aesd_device);
 
@@ -124,6 +227,18 @@ void aesd_cleanup_module(void)
     /**
      * TODO: cleanup AESD specific poritions here as necessary
      */
+     
+     struct aesd_buffer_entry *element;
+     uint8_t index = 0;
+     
+     AESD_CIRCULAR_BUFFER_FOREACH(element, &aesd_device.cbuf, index)
+     {
+     	if(element->buffptr!=NULL)
+     	{
+     		kfree(element->buffptr);
+	}
+	
+    mutex_destroy(&aesd_device.aesd_dev_lock);
 
     unregister_chrdev_region(devno, 1);
 }

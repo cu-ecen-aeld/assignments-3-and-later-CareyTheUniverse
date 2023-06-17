@@ -26,9 +26,15 @@
 #define BACKLOG 10
 #define BUFFER_SIZE 1024  
 #define PORT "9000"  
+#define USE_AESD_CHAR_DEVICE 1
 
 const char *DATA_FILE = "/var/tmp/aesdsocketdata";
 
+#if(USE_AESD_CHAR_DEVICE ==1)
+const char *path = "/dev/aesdchar";
+#else
+const char *path = "/var/tmp/aesdsocketdata";
+#endif
 
 typedef struct threads{
     pthread_t ids;
@@ -180,6 +186,8 @@ int main(int argc, char *argv[])
             return -1;
     }
      
+    #if(USE_AESD_CHAR_DEVICE !=1)
+    
     // Create timestamp  
     int timestampret = pthread_create(&timestampthread, NULL, timestamp_func, NULL);
     if(timestampret != 0){
@@ -187,6 +195,8 @@ int main(int argc, char *argv[])
         syslog(LOG_ERR, "Error: Timestamp thread creation failed: %s", strerror(errno));
         return -1;
     }
+    
+    #endif
 
     while(1)
     {
@@ -336,7 +346,7 @@ void *cleanup(void* clean_args)
     return NULL;        
 }
 
-
+#if(USE_AESD_CHAR_DEVICE !=1)
 void *timestamp_func(void *timestamp)
 {
     while(1)
@@ -388,6 +398,7 @@ void *timestamp_func(void *timestamp)
     }
 
 }
+#endif
 
     
 // Signal handler for SIGINT and SIGTERM
