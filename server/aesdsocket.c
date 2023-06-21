@@ -29,7 +29,7 @@
 #define USE_AESD_CHAR_DEVICE 1
 
 #ifdef USE_AESD_CHAR_DEVICE
-const char *DATA_FILE = "/var/tmp/aesdchar";
+const char *DATA_FILE = "/var/tmp/aesdsocketdata";
 #else
 const char *DATA_FILE = "/var/tmp/aesdsocketdata";
 #endif
