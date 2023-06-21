@@ -29,7 +29,7 @@
 #define USE_AESD_CHAR_DEVICE 1
 
 #ifdef USE_AESD_CHAR_DEVICE
-const char *DATA_FILE = "/dev/aesdchar";
+const char *DATA_FILE = "/var/tmp/aesdchar";
 #else
 const char *DATA_FILE = "/var/tmp/aesdsocketdata";
 #endif
@@ -54,7 +54,7 @@ node_t* _fill_queue(head_t * head, const pthread_t threadid, const int threadcli
 
 
 int count_nodes, count_nodes1;
-int sock_fd , newsock_fd , fd ;
+int sock_fd , newsock_fd , fd;
 int status , sockstat , listenstat ,  thread_ret ,bindstat;
 
 
