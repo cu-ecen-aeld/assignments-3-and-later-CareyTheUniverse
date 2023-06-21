@@ -28,7 +28,7 @@
 #define PORT "9000"  
 #define USE_AESD_CHAR_DEVICE 1
 
-#if(USE_AESD_CHAR_DEVICE ==1)
+#ifdef USE_AESD_CHAR_DEVICE
 const char *DATA_FILE = "/dev/aesdchar";
 #else
 const char *DATA_FILE = "/var/tmp/aesdsocketdata";
@@ -184,8 +184,7 @@ int main(int argc, char *argv[])
             return -1;
     }
      
-    #if(USE_AESD_CHAR_DEVICE !=1)
-    
+#if(USE_AESD_CHAR_DEVICE !=1)
     // Create timestamp  
     int timestampret = pthread_create(&timestampthread, NULL, timestamp_func, NULL);
     if(timestampret != 0){
@@ -193,8 +192,7 @@ int main(int argc, char *argv[])
         syslog(LOG_ERR, "Error: Timestamp thread creation failed: %s", strerror(errno));
         return -1;
     }
-    
-    #endif
+#endif
 
     while(1)
     {
@@ -252,6 +250,7 @@ void *thread_func(void* thread_param)
     fd = open(DATA_FILE, O_RDWR | O_CREAT | O_APPEND, 0777);
     if(fd < 0)
     {
+    	printf("File not created\n");
         closelog();
     } 
     
